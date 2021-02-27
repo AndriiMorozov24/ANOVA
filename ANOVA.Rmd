@@ -1,0 +1,260 @@
+---
+title: "ANOVA"
+author: "Morozov Andrii"
+date: "6 11 2020"
+output: html_document
+---
+
+##**NIEZBEDNE PAKIETY oraz FUNKCJE**
+
+```{r}
+library(car)
+library(ggpubr)
+library(onewaytests)
+library(psych)
+library(nortest)
+library(readxl)
+library(lsr)
+library(sjstats)
+
+CV <- function(.df){
+  w <- c(1:ncol(.df))
+  for (i in 1:ncol(.df)) {
+    w[i] <- sd(.df[[i]], na.rm=TRUE)/mean(.df[[i]], na.rm=TRUE)*100
+  }
+  return(w)
+} # wsp. zmiennosci
+
+setwd("C:/Users/An/Desktop/SAD")
+
+df <- read_xls("mieszkania.xls")
+df$dzielnica <- as.factor(df$dzielnica)
+df$typ_budynku <- as.factor(df$typ_budynku)
+df$pokoi <- as.factor(df$pokoi)
+
+df23 <- read_xls("mieszkaniaC.xls")
+df23$dzielnica <- as.factor(df23$dzielnica)
+df23$typ_budynku <- as.factor(df23$typ_budynku)
+df23$pokoi <- as.factor(df23$pokoi)
+
+```
+<br>
+##**WSTEP**
+
+**Celem projektu** jest przeprowadzenie ANOVA 2-czynnikowej na danych otrzymanych w trakcie zajec projektowych. <br>
+Bedzie podjeta proba ustalenia najlepszej kombinacji czynnikow wplywajacych na zmienna zalezna oraz pomiar efektow koncowych uzyskanych w trakcie projektu. <br>
+
+**Hipoteza badawcza** wyniki dla roznych kombinacji czynnikow **NIE** roznia sie istotnie. <br>
+
+**Opis danych** <br>
+```{r, echo=FALSE}
+str(df)
+head(df)
+```
+Widzimy, ze zbior danych posiada 6 zmiennych: <br>
+Cena za mieszkanie <br>
+Liczba pokoi w mieszkaniu <br>
+Powierzchnia mieszkania <br>
+Dzielnica w ktorej znajduje sie mieszkanie <br>
+Typ budynku w ktorym znajduje sie mieszknaie <br>
+Dla lepszej porownywalnosci mieszkan zostala wprowadzona zmienna syntetyczna **cena_m2**, jest to iloraz ceny i powierzchni mieszkania. <br>
+
+W projekcie bedzie przeprowadzona ANOVA 2-czynnikowa dla zmiennej **cena_m2** na kombinacjach dla zmienncyh **pokoi, dzielnica oraz typ_budynku**. <br>
+
+##STATYSTYKI OPISOWE i ANALIZA WSTEPNA**
+```{r, echo=FALSE}
+.CV <- CV(df[,6])
+print("wsp. zmiennosci dla zmiennej cena_m2 w %")
+.CV
+```
+Widzimy, ze zmiennosc jest na akceptowalnym poziomie. <br>
+
+```{r, echo=FALSE}
+describeBy(df$cena_m2, df$dzielnica, mat = TRUE, digits = 2)
+describeBy(df$cena_m2, df$typ_budynku, mat = TRUE, digits = 2)
+describeBy(df$cena_m2, df$pokoi, mat = TRUE, digits = 2)
+```
+Widzimy, ze statystyki opisowe dla **cena_m2** oraz **dzielnica, typ_budynku** (tabela 1,2 odpowiednio) nie sa zbyt dobre. Wytepuje **dodatnia kurtoza**, co swiadczy, ze wiekszosc wartosci znajduje sie powyzej sredniej, w przypadku zmiennej **typ_budynku** wyniki dla kurtozy sa dosc wysokie. <br>
+
+```{r, echo=FALSE}
+boxplot(cena_m2 ~ dzielnica, data = df)
+boxplot(cena_m2 ~ typ_budynku, data = df)
+boxplot(cena_m2 ~ pokoi, data = df)
+```
+<br>
+Widzimy, ze w przypadku pierwszych dwoch zmiennych wykresy pudelkowe pokrywaja sie, co swiadczy o dobrym doborze danych lecz widoczna jest spora liczba **outlierow** na co wskazywala dodatnia kurtoza dla obu tych zmiennych. <br>
+W celu usuniecia wartosci odstajacych zbior danych zostal zredukowany o mieszkania 1 i 4 pokojowe. <br>
+Nowy zbior danych wyglada nastepujaco: <br>
+```{r, echo=FALSE}
+str(df23)
+head(df23)
+```
+**STATYSTYKI OPISOWE**: <br>
+```{r, echo=FALSE}
+.CV <- CV(df23[,6])
+print("wsp. zmiennosci dla zmiennej cena_m2 w %")
+.CV
+```
+Widzimy, ze zmiennosc jest na akceptowalnym poziomie (>10%), chociaz znacznie mniejsza od poprzedniej(przez usuniecie sporej liczby obserwacji). <br>
+```{r, echo=FALSE}
+describeBy(df23$cena_m2, df23$dzielnica, mat = TRUE, digits = 2)
+describeBy(df23$cena_m2, df23$typ_budynku, mat = TRUE, digits = 2)
+describeBy(df23$cena_m2, df23$pokoi, mat = TRUE, digits = 2)
+```
+Widzimy, ze jakosc zbioru danych istotnie poprawila sie. Dodatnia kurtoza nie wystepuje. <br>
+```{r, echo = FALSE}
+boxplot(cena_m2 ~ dzielnica, data = df23)
+boxplot(cena_m2 ~ typ_budynku, data = df23)
+boxplot(cena_m2 ~ pokoi, data = df23)
+print("Wykresy pudelkowe dla kombinacji czynnikow")
+ggboxplot(df23, x = "typ_budynku", y = "cena_m2", color = "pokoi")
+ggboxplot(df23, x = "dzielnica", y = "cena_m2", color = "typ_budynku")
+ggboxplot(df23, x = "dzielnica", y = "cena_m2", color = "pokoi")
+```
+<br>
+Widzimy, ze redukcja zbioru danych o mieszkania 1 i 4 pokojowe znacznie poprawila sytuacje z wartosciami odstajacymi (brak owych w zbiorze).<br>
+Ponizej widzimy wykresy dla kombinacji czynnikow, **dzielnica:typ_budynku** oraz **dzielnica:pokoi** nie maja wartosci odstajacyh, natomiast **pokoi:typ_budynku** maja owe. <br>
+Skrzynki w przypadku kombinacji **dzielnica:typ_budynku** lepiej "sie pokrywaja", co wstepnie mowi o mozliwych lepszych wynikach anovy dla tej kombinacji. <br>
+W celach badawczych przyjmujemy wszystkie kombinacji czynnikow. <br>
+##**ROZKLAD NORMALNY oraz HOMOGENICZNOSC WARIANCJI w grupach**
+```{r, echo=FALSE}
+print("Liczba mieszkan ze wzgledu na typ budynku w poszczegolnych dzielnicach")
+a<-tapply(df23$cena_m2, df23[,c(4,5)], length)
+a
+print("Liczba mieszkan 2 oraz 3 pokojowych w poszczegolnych dzielnicach")
+b<-tapply(df23$cena_m2, df23[,c(2,4)], length)
+b
+```
+<br>
+Popatrzmy na liczbe mieszkan w kombinacji roznych **czynnikow**. <br>
+Widzimy, ze liczba mieszkan w kazdej z grup **NIE** rownoliczna -> wybieramy test homogenocznosci **Bartletta**. <br>
+Dla sprawdzenia normalnosci w grupach zostaly wybrany testy: **Anderson-Darlin**, **Cramer-von Mises** oraz **Shapiro-Francia**. <br>
+
+```{r, echo=FALSE}
+print("Wyniki testow dla cena_m2 i pokoi")
+tapply(df23$cena_m2, df23$pokoi, ad.test)
+tapply(df23$cena_m2, df23$pokoi, cvm.test)
+tapply(df23$cena_m2, df23$pokoi, sf.test)
+print("Wyniki testow dla cena_m2 i dzielnica")
+tapply(df23$cena_m2, df23$dzielnica, ad.test)
+tapply(df23$cena_m2, df23$dzielnica, cvm.test)
+tapply(df23$cena_m2, df23$dzielnica, sf.test)
+print("Wyniki testow dla cena_m2 i typ_budynku")
+tapply(df23$cena_m2, df23$typ_budynku, ad.test)
+tapply(df23$cena_m2, df23$typ_budynku, cvm.test)
+tapply(df23$cena_m2, df23$typ_budynku, sf.test)
+
+```
+<br>
+W przypadku 2-czynnikowej ANOVA nie ma istotnego sensu badac cala probe na rozklad normalny lecz poszczegolne grupy. <br>
+Przyjrzymy sie wynikom testow. Widzimy ze na **poziomie istotnosci = 5%** we wszystkich grupach zachodzi rozklad normalny. <br>
+<br>
+Zostal wybrany test homogenicznosci **Bartlett**.<br>
+```{r, echo=FALSE}
+homog.test(cena_m2~pokoi, data = df23, method = "Bartlett")
+homog.test(cena_m2~dzielnica, data = df23, method = "Bartlett")
+homog.test(cena_m2~typ_budynku, data = df23, method = "Bartlett")
+```
+<br>
+Widzimy, ze test **Bartlett** potwierdza rownosc wariancji w kazdej z badanych grup. <br>
+<br>
+##**ANOVA z INTERAKCJAMI**
+
+```{r, echo=FALSE}
+ggline(df23, x = "typ_budynku", y = "cena_m2", color = "dzielnica", add = c("mean"))
+ggline(df23, x = "pokoi", y = "cena_m2", color = "dzielnica", add = c("mean"))
+ggline(df23, x = "pokoi", y = "cena_m2", color = "typ_budynku", add = c("mean"))
+```
+<br>
+Interpretacja wykresow:<br>
+1. Dla **typ_budynku:dzielnica**, widoczny jest trend w zmianach ceny za m2 -> najpierw wzrost sredniej dla ceny za m2(niski blok jest drozszy), a potem spadek(wiezowiec jest tanszy). W przypadku **wiezowca** w dzielnicach **Biskupin** oraz **Srodmiescie** nastepuje pewna korelacja cen za m2, ale ze wzgledu na poprzednie zachowywanie wykresow jest to **interakcja nie istotna**. Bedzie to udowodnione w nastepnej sekcji projektu.<br>
+2. Dla **pokoi:dzilenica**, widoczny jest trend w zmianach ceny za m2 -> przy zmianie liczby pokoi z 2 na 3 w kazdej dzielnicy nastepuje spadek sredniej ceny za m2, co mowi o braku interakcji czynnikow lecz wplywu kazdego czynnika z osobna. <br>
+3. Dla **pokoi:typ_budynku**, rowniez obserwujemy spadek sredniej ceny za m2 przy zmianie liczby pokoi z 2 na 3. Kluczowym w tym jest to, ze srednia cen za m2 dla kamiennicy 2 pokojowej jest najwyzsza, a po zmianie na liczbe pokoi = 3 srednia cen za m2 dla kamiennicy w porownaniu do pozostalych typow budynku jest **najnizsza**, co wskazuje na **laczny wplyw** czynnikow na zmiane zachowywania sredniej cen za m2 -> zachodzi **effekt interakcji**. <br>
+<br>
+```{r, echo=FALSE}
+print("Wyniki ANOVA dla cena_m2 oraz dzielnica*typ_budynku")
+res.aov1 <- aov(cena_m2 ~ dzielnica*typ_budynku, data = df23) 
+Anova(res.aov1, type = "III")
+
+print("Wyniki ANOVA dla cena_m2 oraz dzielnica*pokoi")
+res.aov2 <- aov(cena_m2 ~ dzielnica*pokoi, data = df23) 
+Anova(res.aov2, type = "III")
+
+print("Wyniki ANOVA dla cena_m2 oraz typ_budynku*pokoi")
+res.aov3 <- aov(cena_m2 ~ pokoi*typ_budynku, data = df23)
+Anova(res.aov3, type = "III")
+```
+<br>
+Widzimy, ze wyniki **ANOVA** potwierdzaja poprzednie wykresy, **efekt interakcji** zachodzi tylko w przypadku **pokoi:typ_budynku**(w celach badawczych przyjmujemy, ze p-value = 0,066 jest bliskie 0,05 i dostateczne za uznanie **efektu interakcji**). <br>
+Dla pozostalych dwoch kombinacji bedzie zrobiona **ANOVA** bez interakcji(addytywna). <br>
+Wyniki znajduja sie ponizej. <br>
+```{r, echo=FALSE}
+print("Wyniki ANOVA dla cena_m2 oraz dzielnica+typ_budynku bez efektu interakcji")
+res.aov1 <- aov(cena_m2 ~ dzielnica+typ_budynku, data = df23) 
+Anova(res.aov1, type = "III")
+
+print("Wyniki ANOVA dla cena_m2 oraz dzielnica+pokoi bez efektu interakcji")
+res.aov2 <- aov(cena_m2 ~ dzielnica+pokoi, data = df23) 
+Anova(res.aov2, type = "III")
+```
+Z wynikow **ANOVA** dla kombinacji **pokoi:typ_budynku** z interakcjami oraz pozostalych kombinacji bez efektu interakcji widzimy, ze konieczna jest analiza **post-hoc** w celu ustalenia, która z grup wplywa bardziej na brak rownosci srednich w grupach. <br>
+Widzimy, ze nie ma istotnego sensu przeprowadzac analize **post-hoc** dla czynnika **pokoi**, poniewaz jest to tylko 2-poziomowy faktor, dla ktorego juz zostal sprawdzony brak rownosci srednich w grupach (p-value < 0,05). <br>
+
+##**ANALIZA POST-HOC**
+
+```{r, echo=FALSE}
+pairwise.t.test(df23$cena_m2,df23$dzielnica, p.adjust.method = "BH")
+pairwise.t.test(df23$cena_m2,df23$typ_budynku, p.adjust.method = "BH")
+```
+Widzimy wyniki testow wielokrotnego porownywania dla **czynnikow**. Byla wybrana metoda **BH**. <br>
+Widzimy, ze **p-value < 0,05** wystepuje w przypadku dzielnic **Krzyki** i **Biskupin** oraz **Srodmiescie** i **Krzyki**, co wskazuje na istotne roznice w tych grupach. <br>
+Natomiast, zadna z grup w przypadku **typ_budynku** nie wplywa istotnie (p-value > 0,05). <br>
+```{r, echo=FALSE}
+print("Wyniki testu Tukey dla dzielnica oraz typ_budynku")
+asp<-TukeyHSD(res.aov1, which = "dzielnica")
+asp
+print("Wyniki testu Tukey dla dzielnica oraz pokoi")
+asp<-TukeyHSD(res.aov2, which = "dzielnica")
+asp
+print("Wyniki testu Tukey dla pokoi oraz typ_budynku")
+asp<-TukeyHSD(res.aov3)
+asp
+```
+<br>
+Przyjrzymy sie wynikow **Tukey** testu: <br>
+1. W kombinacji **dzielnica:typ_budynku** nie zachodzil efekt interakcji, poza tym p-value dla **typ_budynku** bylo > 0,05, co swiadczy o tym, ze nie wywiera ow czynnik istotniego wplywu. Wyniki testu Tukey dla **dzielnica** zgadzaja sie z poprzednimi wynikami, **Krzyki-Biskupin** istotnie wplywaja na roznice srednich, natomiast dla **Srodmiescie-Krzyki** p-value wynioslo 0,074, co jest wieksze niz w przypadku poprzedniego testu. <br>
+2. W kombinacji **dzielnica:pokoi** nie zachodzil efekt interakcji, nie ma istotnego sensu sprawdzac wplyw **pokoi** poniewaz jest 2-poziomowy faktor z p-value < 0,05, natomiast dla **dzielnica** znow widzimy, ze dla **Krzyki-Biskupin** p-value jest < 0,05. Dla **Srodmiescie-Krzyki** p-value rowniez jest < 0,05, co mowi, ze te dzielnice wplywaja na roznice srednich pod katem **liczby pokoi**. <br>
+3. W kombinacji **pokoi:typ_budynku** zachodzil efekt interakcji (p-value < 0,05), natomiast widzimy, ze **typ_budynku** nie wywiera istotnego wplywu, co sie zgadza z wynikami **ANOVA**. Interakcje, ktore wywoluja roznice srednich (p-value < 0,05) sa widoczne powyzej. <br>
+<br>
+
+##**EFEKTY EKSPEREMENTALNE**
+```{r, echo=FALSE}
+print("Wyniki eta.kwadrat oraz czastkowej eta.kwadrat")
+etaSquared(res.aov3)
+print("Wyniki omega.kwadrat")
+omega_sq(res.aov3)
+```
+Widzimy, ze dla kombinacji **pokoi:typ_budynku**, interakcja pomiedzy liczba pokoi a typem_budynku wyjasnia **5,3%** zmiennosci ceny za m2 co jest slabym efektem. <br>
+Calkowita zmiennosc ceny za m2 zostala wyjasniona na **2,8%** w tym przypadku. <br>
+Wplyw wybranych czynnikow dla calej populacji jest na poziomie **1,8%**, co jest slabym efektem. <br>
+Zachodzi nierownosc **eta.kwadrat** > **omegi.kwadrat**, co swiadczy o poprawnosci obliczen. <br>
+Dla pozostalych kombinacji czynnikow **efekty eksperementalne** nie byly liczone, poniewaz nie zachodzil w owych **efekt interakcji** i nie mialoby to sensu. <br>
+
+##**ANALIZA KONCOWA**
+
+**Celem projektu** bylo przeprowadzenie ANOVA 2-czynnikowej oraz ustalenie optymalnej kombinacji **czynnikow**. Tylko w przypadku jednej kombinacji **pokoi:typ_budynku** mialo istotny sens przeprowadzenie ANOVA 2-czynnikowej, poniewaz zachodzil **efekt interakcji**, co potwierdzaja wykresy interakcji. W pozostalych kombinacjach **efektu interakcji** nie bylo (p-value > 0,05), co potwierdzaja wykresy. <br>
+
+Zalozenia ANOVA zostaly spelnione, zachodzi rozklad normalny i homogenicznosc wariancji we wszystkich grupach (byl wykorzystany **test Bartletta** poniewaz grupy byly nie rownoliczne). Dla wybranej kombinacji **pokoi:typ_budynku** byla przeprowadzona analiza post-hoc, poniewaz p-value dla interakcji bylo < 0,05. Wyniki znajduja sie ponizej, widzimy ktora z interakcji istotnie wplywa na roznice srednich (p adj < 0,05). <br>
+
+```{r, echo=FALSE}
+round(asp$`pokoi:typ_budynku`,3)
+```
+<br>
+**Eta kwadrat** dla **pokoi:typ_budynku** wyniosla **2,8%**, co interpretujemy jako procent wyjasnionej zmiennosci ceny mieszkania za m2 w modelu 2 czynnikowym. <br>
+**Eta czastkowa kwadrat** wyniosla w tym przypadku **5,3%**, co interpretujemy jako procent wyjasnionej zmiennosci efektu interakcji w modelu z dwoma czynnikami przy pomieniecu wplywu liczby pokoi oraz typu budynku. <br>
+Omega kwadrat wyniosla **1,8%**, co interpretujemy jako procent wyjasnionej calkowitej zmiennosci ceny mieszkania za m2 w skutek interakcji liczby pokoi oraz typu budynku. <br>
+Model nie wyjasnia **51%** zmiennosci ceny mieszkania za m2. 
+
+**Hipoteza badawcza** zostala oddalona, poniewaz 2 z 3 kombinacji nie przeszly testu ANOVA (p-value dla interakcji > 0,05) i interpretacja tych kombinacji nie mialaby ostotnego sensu. <br>
+**DZIEKUJE ZA UWAGE**
+
